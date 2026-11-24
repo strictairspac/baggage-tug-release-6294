@@ -54,11 +54,14 @@ FIXTURES = [
 ]
 
 
-def run(payload, parameter, db):
-    validate(payload)
-    if type(parameter) is not int or not 1 <= parameter <= 1439:
-        raise ValueError("复核时点须在当日 1–1439 分钟")
-    rows = [
+def check_parameter(parameter):
+    if type(parameter) is not int or not 1 <= parameter <= CONFIG["max_parameter"]:
+        raise ValueError(f"复核时点须在当日 1–{CONFIG['max_parameter']} 分钟")
+
+
+def decision_rows(payload, parameter, db, assets=None):
+    """Screening rows for every vehicle in the payload, or only for ``assets``."""
+    return [
         {
             "车辆": decision["asset"],
             "车型": decision["category"],
@@ -68,11 +71,23 @@ def run(payload, parameter, db):
             ),
             "证据诊断": decision["diagnostic"],
         }
-        for decision in release_decisions(db, payload, parameter)
+        for decision in release_decisions(db, payload, parameter, assets)
     ]
+
+
+def aggregate(parameter, rows):
+    # Batches are checked vehicle by vehicle; the evidence list stays in the
+    # same vehicle order as a single-pass screening.
+    rows = sorted(rows, key=lambda row: row["车辆"])
     released = sum(row["放行决定"] == "放行" for row in rows)
     return {
         "summary": f"{parameter // 60:02d}:{parameter % 60:02d} 复核 {len(rows)} 辆，{released} 辆可放行。",
         "metrics": {"受检数": len(rows), "可放行": released, "禁止放行": len(rows) - released},
         "rows": rows,
     }
+
+
+def run(payload, parameter, db):
+    validate(payload)
+    check_parameter(parameter)
+    return aggregate(parameter, decision_rows(payload, parameter, db))

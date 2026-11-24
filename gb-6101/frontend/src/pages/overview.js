@@ -19,6 +19,7 @@ export async function overview(config) {
         cases.length ? table(["编号", "名称", "登记人"], cases.slice(0, 4).map(item => [item.code, item.title, item.created_by]), "近期资料") : empty("进入资料页登记第一条资料。")),
       section("最近执行", latest ?
         el("div", {class: "stack"}, status(latest.status), el("strong", {}, latest.case_title),
+          el("span", {}, `已核车辆数 ${latest.checked ?? 0} / ${latest.total ?? 0}`),
           el("a", {href: `#runs/${latest.id}`}, "查看执行进度")) :
         empty("选择演示资料并提交执行，此处会显示处理进度。"))),
     section("操作记录", audit.length ?

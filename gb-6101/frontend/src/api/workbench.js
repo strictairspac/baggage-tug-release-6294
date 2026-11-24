@@ -7,6 +7,7 @@ export const api = {
   createCase: data => request("/cases", {method: "POST", data}),
   runs: () => request("/runs"),
   run: (id, signal) => request(`/runs/${id}`, {signal}),
+  runItems: (id, signal) => request(`/runs/${id}/items`, {signal}),
   enqueue: (id, data) => request(`/cases/${id}/runs`, {method: "POST", data}),
   review: id => request(`/runs/${id}/review`),
   submitReview: (id, data) => request(`/runs/${id}/review`, {method: "POST", data}),

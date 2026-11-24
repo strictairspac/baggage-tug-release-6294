@@ -20,11 +20,19 @@ function signature(review) {
 }
 
 export async function evidencePage(config, user, route) {
-  const runs = (await api.runs()).filter(item => item.status === "done");
-  const run = route.id ? await api.run(route.id) : runs[0];
-  if (!run?.result) return el("div", {class: "page"},
+  const completed = (await api.runs()).filter(item => item.status === "done");
+  const selected = route.id ? await api.run(route.id) : completed[0];
+  if (!selected) return el("div", {class: "page"},
     pageHeading(config.modules[3], null), empty("成功执行一个批次后可以查看、签核和下载证据。"),
     el("a", {href: "#runs"}, config.modules[2]));
+  // A handover sheet is only issued once every vehicle in the batch is screened.
+  const ready = selected.status === "done" && selected.result && !selected.remaining;
+  if (!ready) return el("div", {class: "page evidence"},
+    pageHeading(config.modules[3], selected.case_title),
+    empty(selected.status === "failed" ? `该批次${selected.failure || "执行失败"}，没有可下载的交接单。` :
+      `该批次已核 ${selected.checked ?? 0} / ${selected.total ?? 0} 辆，整批核齐后才开放下载。`),
+    el("a", {href: `#runs/${selected.id}`}, "查看筛查进度"));
+  const run = selected;
 
   const review = await api.review(run.id);
   const issue = errorText();
@@ -44,7 +52,7 @@ export async function evidencePage(config, user, route) {
     reviewForm(run.id, data => signing.replaceChildren(signature(data))) : empty("待复核员签署。"));
   const options = el("select", {"aria-label": "选择已完成的批次", onchange: event => {
     location.hash = `evidence/${event.target.value}`;
-  }}, runs.map(item => el("option", {value: item.id, selected: item.id === run.id}, `#${item.id} ${item.case_title}`)));
+  }}, completed.map(item => el("option", {value: item.id, selected: item.id === run.id}, `#${item.id} ${item.case_title}`)));
   return el("div", {class: "page evidence"},
     pageHeading(config.modules[3], run.case_title, button),
     issue, options,

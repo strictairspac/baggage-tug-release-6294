@@ -1,13 +1,16 @@
 name: db6101-relational-division
+x-env: &app-env
+  DATABASE_URL: "postgresql+psycopg://workbench:${DB_PASSWORD:-WorkbenchLocal23}@db:5432/workbench"
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:-local-demo-replace-with-a-random-secret-20261124}
+  DEMO_PASSWORD: ${DEMO_PASSWORD:-Demo-DbWorkbench-2026}
+  SEED_DEMO: ${SEED_DEMO:-true}
+  WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-10}
+  WORKER_MAX_ATTEMPTS: ${WORKER_MAX_ATTEMPTS:-3}
 x-app: &app
   image: ${COMPOSE_PROJECT_NAME:-db6101-relational-division}-app:local
   env_file: [.env]
-  environment:
-    DATABASE_URL: "postgresql+psycopg://workbench:${DB_PASSWORD:-WorkbenchLocal23}@db:5432/workbench"
-    REDIS_URL: redis://redis:6379/0
-    JWT_SECRET: ${JWT_SECRET:-local-demo-replace-with-a-random-secret-20261124}
-    DEMO_PASSWORD: ${DEMO_PASSWORD:-Demo-DbWorkbench-2026}
-    SEED_DEMO: ${SEED_DEMO:-true}
+  environment: *app-env
   volumes:
     - evidence:/var/lib/workbench
 services:
@@ -35,19 +38,36 @@ services:
       interval: 2s
       timeout: 4s
       retries: 45
-  worker:
+  # Two execution machines share one database queue. A vehicle is screened by
+  # whichever worker claims it first; finished vehicles are never repeated.
+  worker-a:
     <<: *app
-    container_name: ${COMPOSE_PROJECT_NAME:-db6101-relational-division}-worker
+    container_name: ${COMPOSE_PROJECT_NAME:-db6101-relational-division}-worker-a
     command: ["python", "-m", "src.worker"]
+    environment:
+      <<: *app-env
+      WORKER_ID: worker-a
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
       backend: {condition: service_healthy}
-    healthcheck:
+    healthcheck: &worker-health
       test: ["CMD", "python", "-c", "from src.worker import check; raise SystemExit(0 if check() else 1)"]
       interval: 2s
       timeout: 4s
       retries: 25
+  worker-b:
+    <<: *app
+    container_name: ${COMPOSE_PROJECT_NAME:-db6101-relational-division}-worker-b
+    command: ["python", "-m", "src.worker"]
+    environment:
+      <<: *app-env
+      WORKER_ID: worker-b
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      backend: {condition: service_healthy}
+    healthcheck: *worker-health
   db:
     container_name: ${COMPOSE_PROJECT_NAME:-db6101-relational-division}-db
     image: postgres:16-alpine

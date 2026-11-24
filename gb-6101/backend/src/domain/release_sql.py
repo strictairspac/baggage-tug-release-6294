@@ -1,7 +1,13 @@
 from sqlalchemy import text
 
 
-def _load_staging(db, payload):
+def _load_staging(db, payload, assets=None):
+    vehicles = [row for row in payload["vehicles"] if assets is None or row["asset"] in assets]
+    categories = {row["category"] for row in vehicles}
+    requirements = [
+        row for row in payload["requirements"] if assets is None or row["category"] in categories
+    ]
+    evidence = [row for row in payload["evidence"] if assets is None or row["asset"] in assets]
     db.execute(text("""
         CREATE TEMP TABLE shift_vehicle (
             asset VARCHAR(64) PRIMARY KEY, category VARCHAR(64) NOT NULL
@@ -20,21 +26,22 @@ def _load_staging(db, payload):
             expires INTEGER NOT NULL, status VARCHAR(8) NOT NULL
         ) ON COMMIT DROP
     """))
-    db.execute(text("INSERT INTO shift_vehicle VALUES (:asset, :category)"), payload["vehicles"])
-    if payload["requirements"]:
+    db.execute(text("INSERT INTO shift_vehicle VALUES (:asset, :category)"), vehicles)
+    if requirements:
         db.execute(
             text("INSERT INTO shift_requirement VALUES (:category, :check)"),
-            payload["requirements"],
+            requirements,
         )
-    if payload["evidence"]:
+    if evidence:
         db.execute(
             text("INSERT INTO shift_evidence VALUES (:seq, :asset, :check, :checked, :expires, :status)"),
-            payload["evidence"],
+            evidence,
         )
 
 
-def release_decisions(db, payload, minute):
-    _load_staging(db, payload)
+def release_decisions(db, payload, minute, assets=None):
+    """Decide release for every staged vehicle, or only for ``assets`` when given."""
+    _load_staging(db, payload, assets)
     rows = db.execute(text("""
         WITH ranked AS (
             SELECT *, ROW_NUMBER() OVER (
